@@ -26,9 +26,30 @@
 ! POSSIBILITY OF SUCH DAMAGE. 
 !
 PROGRAM main
-use graph 
+use graph_partition 
+
 implicit none
 
+integer, allocatable   :: g(:,:)        !! Graph connectivity table
+integer, allocatable   :: S(:,:)        !! Slices information
+integer, allocatable   :: E1(:),E2(:)      !! Edge information
+integer :: NMAX
 
+call ReadGraphFromText('graph_dat',g)
+
+call ReadEdgeFromText('edge1_dat',E1)
+
+call ReadEdgeFromText('edge2_dat',E2)
+
+NMAX = 20
+call slice(g,E1,E2,NMAX,S)
+
+open(unit=11,file='slice.dat')
+
+call SaveSlicesTxt(11,S)
+
+close(11)
+
+deallocate(g,S)
 
 END PROGRAM MAIN

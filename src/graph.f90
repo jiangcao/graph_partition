@@ -35,8 +35,8 @@ module graph_partition
 implicit none
 
 private 
-public :: AddEdge,ReadTxt,SaveTxt,SaveTxt2col,testSlicing,slice
-public :: getPointsInAllSlices,getPointsInSlice
+public :: AddEdge,ReadGraphFromText,SaveSlicesTxt,SaveTxtGraph,testSlicing,slice
+public :: getPointsInAllSlices,getPointsInSlice,ReadEdgeFromText
 
 integer, parameter :: dp=8
 
@@ -45,14 +45,6 @@ interface slice
 end interface 
 
 
-
-interface SaveTxt
-	module procedure SaveTxtGraph,SaveTxtAllConnectedPoints
-end interface
-
-interface ReadTxt
-	module procedure ReadGraphFromText
-end interface ReadTxt
 
 contains
 
@@ -88,17 +80,25 @@ subroutine SaveSlicesTxt(handle,S,X,Y,Z)
 implicit none
 integer, intent(in) :: handle                           !! file unit number
 integer,CONTIGUOUS , intent(in) :: S(:,:)               !! Slices information
-real(dp),CONTIGUOUS , intent(in) :: X(:)
-real(dp),CONTIGUOUS , intent(in) :: Y(:)
-real(dp),CONTIGUOUS , intent(in) :: Z(:)
+real(dp),CONTIGUOUS , intent(in), optional :: X(:)
+real(dp),CONTIGUOUS , intent(in), optional :: Y(:)
+real(dp),CONTIGUOUS , intent(in), optional :: Z(:)
 integer :: i,j
-write (handle,*) '     X         Y         Z       Slice# '
-do i = 1,size(S,2)
-	do j = 2,S(1,i) 
-		write(handle,'(3E15.5,I10)') X(S(j,i)),Y(S(j,i)),Z(S(j,i)),i 
-	enddo
-enddo
- 
+if (present(X) .and. present(Y) .and. present(Z)) then
+  write (handle,*) '#     X         Y         Z       Slice# '
+  do i = 1,size(S,2)
+  	do j = 2,S(1,i) 
+  		write(handle,'(3E15.5,I10)') X(S(j,i)),Y(S(j,i)),Z(S(j,i)),i 
+  	enddo
+  enddo
+else  
+  write (handle,*) '#    Point#       Slice# '
+  do i = 1,size(S,2)
+  	do j = 2,S(1,i) 
+  		write(handle,'(2I10)') S(j,i) , i 
+  	enddo
+  enddo
+endif
 end subroutine SaveSlicesTxt
 
 
@@ -120,6 +120,23 @@ endif
 end subroutine AddEdge
 
 
+
+subroutine ReadEdgeFromText(fname,E)
+!! Subroutine for reading the edge data from an ASCII text file. 
+implicit none
+integer, allocatable, intent(out)   :: E(:)        !! Edge index
+character(len=*), intent(in)        :: fname       !! input text file name
+integer::NPT,i
+integer, parameter :: handle = 677
+  open(unit = handle, file=fname)
+  read(handle,*) NPT
+  allocate(E(NPT))
+  do i=1,NPT
+	read(handle,*) E(:)
+  enddo
+  close(handle)
+end subroutine ReadEdgeFromText
+
  
 subroutine ReadGraphFromText(fname,g)
 !! Subroutine for reading in the graph data from an ASCII text file. 
@@ -132,7 +149,7 @@ subroutine ReadGraphFromText(fname,g)
 !!
 implicit none 
 integer, allocatable, intent(out)   :: g(:,:)        !! Graph connectivity table. 
-character(len=*), intent(in)        :: fname         !! Unit number of the input text file
+character(len=*), intent(in)        :: fname         !! input text file name
 integer, allocatable                :: gn(:)         !! Temporary array for sizing the Graph Table
 integer                             :: i,j,k         !! Looping variables
 integer                             :: NL            !! Number of lines in the text file
@@ -170,8 +187,6 @@ enddo
 close(handle) 
 endsubroutine ReadGraphFromText
 
-
-
  
 subroutine SaveTxtGraph(handle,g)
 !! Subroutine for saving the graph data into an ASCII text file. 
@@ -194,10 +209,6 @@ else
 	enddo
 endif
 end subroutine SaveTxtGraph
-
-
-
-
 
  
 subroutine SaveTxt2col(handle,g)
@@ -222,36 +233,6 @@ do i=1,size(g,2)
 enddo
 end subroutine SaveTxt2col
 
-
- 
-subroutine SaveTxtAllConnectedPoints(handle,g,X,Y,Z)
-implicit none 
-integer,CONTIGUOUS , intent(in)  :: g(:,:)        !! Graph connectivity table. 
-integer, intent(in), optional    :: handle        !! Unit number of the input text file
-real(dp),CONTIGUOUS , intent(in) :: X(:)
-real(dp),CONTIGUOUS , intent(in) :: Y(:)
-real(dp),CONTIGUOUS , intent(in) :: Z(:)
-integer                          :: i,j           
-!! Looping variable 
-if (present(handle)) then 
-	write (handle,*) '#     X         Y         Z        Point#'
-else 
-	print *, '#     X         Y         Z         Point#'
-endif
-do i=1,size(g,2)
-	do j=2,g(1,i)
-		if (i .le. g(j,i)) then 
-			if (present(handle)) then 
-				write(handle, '(3E10.2,i10)') X(i),Y(i),Z(i), i
-				write(handle, '(3E10.2,i10)') X(g(j,i)),Y(g(j,i)),Z(g(j,i)), g(j,i)
-			else 
-				write(*, '(3E10.2,i10)') X(i),Y(i),Z(i), i
-				write(*, '(3E10.2,i10)') X(g(j,i)),Y(g(j,i)),Z(g(j,i)), g(j,i)
-			endif 
-		endif
-	enddo
-enddo 
-end subroutine SaveTxtAllConnectedPoints
 
 
  
@@ -291,22 +272,18 @@ do while (SHP .ne. SLP)
 enddo
 end function dist	
 
-
-
  
 function part(DL,DR) result(P)
 !! Function returns the partition of a graph depending on the distances to the edges 
 !! obtained from [[edge]]
 !!
 implicit none
-integer,CONTIGUOUS ,intent(in)				:: DL(:) !! Distance to the left edge obtained from [[edge]]
-integer,CONTIGUOUS ,intent(in)				:: DR(:) !! Distance to the right edge obtained from [[edge]]
+integer,CONTIGUOUS ,intent(in)	:: DL(:) !! Distance to the left edge obtained from [[edge]]
+integer,CONTIGUOUS ,intent(in)	:: DR(:) !! Distance to the right edge obtained from [[edge]]
 integer 						:: P(size(DL))	     !! Partition, 1 for left part, and 2 for right part
 P = 2
 where(DL < DR) P=1
 end function part
-
-
 
  
 function PtsInParts(P,PID) result(PT)
@@ -325,9 +302,6 @@ do i = 1,size(P)
 	endif 
 enddo
 end function PtsInParts
-
-
-
 
  
 function edge(g,P) result(E)
@@ -351,10 +325,6 @@ do i = 1,size(g,2)							! Loop over all the points
 	enddo
 enddo
 end function edge
-
-
-
-
 
  
 function subgraph(g,PT) result(sg)
@@ -381,8 +351,7 @@ do i = 1, size(PT)
 enddo
 end function subgraph
 
-
-
+ 
  
 pure function index(A,y) result(x)
 !! Function returns the index of one value y in a list A
@@ -397,7 +366,6 @@ x = i
 end function index
 
 
-
  
 function indexes(A,y) result(x)
 !! Function returns the index of an array of values y in the list A by calling [[index]]
@@ -409,7 +377,6 @@ FORALL (i=1:size(y)) x(i) = index(A,y(i))
 end function indexes
 
 
-
  
 function resize(A) result(B)
 !! Function returns a more compact table list by resizing the array
@@ -419,7 +386,6 @@ integer,CONTIGUOUS , intent(in)	:: A(:,:)	   !! Table with too many 0, to be com
 integer 					:: B(maxval(A(1,:)),size(A,2))	!! Output resized table
 B(:,:) = A(1:size(B,1),:)
 end function resize
-
 
 
  
@@ -449,10 +415,11 @@ integer   						:: i, NP
 end subroutine slice_1contact
 
 
+
  
 recursive subroutine slice_2contacts(g,E1,E2,NMAX,S)
 !! Function returns the slices of the graph. The problem is solved in a divide-and-conquer  
-!! manner, using recursive bisection. The algorithm is following.
+!! manner, using recursive bisection method described in [Journal of Computational Physics 228 (2009) 8548–8565]. 
 !!
 !! 1. Compute the left/right distance of points to left/right edges, by calling [[dist]]
 !! 2. Divide the graph into 2 'balanced' parts, based on if the right distance is larger than the left distance
@@ -540,9 +507,7 @@ integer                         :: i, err
   if (err /= 0) print *, "S2: Deallocation request denied"	
 end subroutine slice_2contacts
 
-
-
-
+ 
  
 function testSlicing(g,S) result(b)
 !! Function tests if a slicing from subroutine [[slice]]  of the graph is consistent by  
@@ -575,8 +540,6 @@ integer 						:: i, k,j,err
 end Function testSlicing
 
 
-
-
  
 function SliceNum(S) result(N)
 !! Function returns an array of indexes of slice to which the points belong 
@@ -593,6 +556,17 @@ integer 						:: i,j
 end Function SliceNum
 
 
+
+subroutine ConvertSparseMatrixToGraph(IA,JA,G)
+!! Subroutine convert a sparse matrix in CSR format into a graph
+!!   The graph will be allocated inside the subroutine, so remember to deallocate the memory outside
+implicit none
+integer, intent(in) :: IA, JA ! IA and JA index vectors of a CSR matrix
+integer, allocatable, intent(out)   :: g(:,:)        !! Graph connectivity table 
+
+
+
+end subroutine ConvertSparseMatrixToGraph
 
 
 end module graph_partition
