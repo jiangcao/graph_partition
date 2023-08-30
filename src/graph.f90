@@ -52,7 +52,7 @@ contains
 function getPointsInAllSlices(S) result(v)
 !! Function returns the points in all the slices
 implicit none
-integer,CONTIGUOUS , intent(in) :: S(:,:)
+integer , intent(in) :: S(:,:)
 !! Slices information
 integer :: v(sum(S(1,:))-size(S,2))
 integer :: i,n
@@ -68,7 +68,7 @@ end function getPointsInAllSlices
 function getPointsInSlice(S,i) result(v)
 !! Function returns the points in a slice number `i`
 implicit none
-integer,CONTIGUOUS , intent(in) :: S(:,:)              !! Slices information
+integer , intent(in) :: S(:,:)              !! Slices information
 integer, intent(in) :: i                               !! Slice number
 integer :: v(S(1,i)-1)
 v(:) = S(2:S(1,i),i)
@@ -79,10 +79,10 @@ subroutine SaveSlicesTxt(handle,S,X,Y,Z)
 !! Procedure saves the slice information into a text file
 implicit none
 integer, intent(in) :: handle                           !! file unit number
-integer,CONTIGUOUS , intent(in) :: S(:,:)               !! Slices information
-real(dp),CONTIGUOUS , intent(in), optional :: X(:)
-real(dp),CONTIGUOUS , intent(in), optional :: Y(:)
-real(dp),CONTIGUOUS , intent(in), optional :: Z(:)
+integer , intent(in) :: S(:,:)               !! Slices information
+real(dp) , intent(in), optional :: X(:)
+real(dp) , intent(in), optional :: Y(:)
+real(dp) , intent(in), optional :: Z(:)
 integer :: i,j
 if (present(X) .and. present(Y) .and. present(Z)) then
   write (handle,*) '#     X         Y         Z       Slice# '
@@ -107,13 +107,14 @@ subroutine AddEdge(g,ij)
 !! Subroutine update the graph data (g) by adding an edge from node-i to node-j.
 !! The memory space for (g) is already allocated before calling this procedure
 implicit none	
-integer,CONTIGUOUS , intent(out) :: g(:,:)  
+integer , intent(out) :: g(:,:)  
 integer, intent(in) :: ij(2)
 ! Find if this Edge is already present in the graph, avoiding duplicates
 if (ANY(g(2:g(1,ij(1)) ,ij(1)) == ij(2))) then 
 	return 
 else 
-	g(1,ij)=g(1,ij)+1
+	g(1,ij(1))=g(1,ij(1))+1
+	g(1,ij(2))=g(1,ij(2))+1
 	g(g(1,ij(2)),ij(2)) = ij(1)
 	g(g(1,ij(1)),ij(1)) = ij(2)
 endif
@@ -128,17 +129,22 @@ integer, allocatable, intent(out)   :: E(:)        !! Edge index
 character(len=*), intent(in)        :: fname       !! input text file name
 integer::NPT,i
 integer, parameter :: handle = 677
+logical :: l0index
+l0index = .true.
   open(unit = handle, file=fname)
-  read(handle,*) NPT
-  allocate(E(NPT))
+  read(handle,*) NPT ! number of points
+  allocate(E(NPT))  
   do i=1,NPT
-	read(handle,*) E(:)
+	read(handle,*) E(i)
+	if (l0index) then
+	  E(i) = E(i)+1
+	endif
   enddo
   close(handle)
 end subroutine ReadEdgeFromText
 
  
-subroutine ReadGraphFromText(fname,g)
+subroutine ReadGraphFromText(fname,g,threshold,use0index)
 !! Subroutine for reading in the graph data from an ASCII text file. 
 !! 
 !! @note The graph connectivity table is stored in a 2D integer array `g(:,:)` which
@@ -150,39 +156,85 @@ subroutine ReadGraphFromText(fname,g)
 implicit none 
 integer, allocatable, intent(out)   :: g(:,:)        !! Graph connectivity table. 
 character(len=*), intent(in)        :: fname         !! input text file name
+real(8), intent(in), optional       :: threshold
+logical, intent(in), optional       :: use0index
 integer, allocatable                :: gn(:)         !! Temporary array for sizing the Graph Table
 integer                             :: i,j,k         !! Looping variables
 integer                             :: NL            !! Number of lines in the text file
 integer                             :: IO            !! IO state during reading
 integer                             :: M             !! Number of points in the graph 
+integer :: NC
 integer, parameter :: handle = 675
+logical :: l0index
+real(8) :: weight
+l0index=.false.
+if (present(use0index)) l0index=use0index
 open(unit = handle, file=fname)
 M = -HUGE(1)
 NL = 0
 ! Read through the file first to know the number of points in the graph
 do 
 	read(handle,*,IOSTAT = IO) i,j 
+	if (l0index) then
+	  i=i+1
+	  j=j+1
+	endif
 	if (IO < 0) exit 
 	if (max(i,j)>M) M=max(i,j)
 	NL = NL+1
 enddo
+print *, 'Number of Points=',M
 allocate(gn(M))
 gn = 0
 ! Read again the file to know about the size of the Graph Table
 rewind handle
 do k =1,NL
-	read(handle,*) i,j 
-	gn((/i,j/)) = gn((/i,j/)) +1
+	if (present(threshold)) then
+	  read(handle,*) i,j , weight
+	else
+	  read(handle,*) i,j 
+	endif
+	if (l0index) then
+	  i=i+1
+	  j=j+1
+	endif
+	if (present(threshold)) then
+	  if (weight > threshold) then
+	    gn(i) = gn(i) +1
+	    gn(j) = gn(j) +1
+	  endif
+	else
+	  gn(i) = gn(i) +1
+	  gn(j) = gn(j) +1
+	endif
 enddo
-allocate(g(maxval(gn)+1,M))
+NC = maxval(gn)
+print *, 'Max Number of Connections=',NC
+allocate(g(NC+1,M))
 g(:,:) = 0
 g(1,:) = 1
 deallocate(gn)
 ! Read last time the file for the Graph Table
 rewind handle
 do k=1,NL
-	read(handle,*,IOSTAT = IO) i,j 
-	call AddEdge(g, (/i,j/))
+	if (present(threshold)) then
+	  read(handle,*) i,j , weight
+	else
+	  read(handle,*) i,j 
+	endif
+	if (l0index) then
+	  i=i+1
+	  j=j+1
+	endif		
+	if (i .ne. j) then
+	  if (present(threshold)) then
+	    if (weight > threshold) then
+	      call AddEdge(g, (/i,j/))	
+	    endif
+	  else
+	    call AddEdge(g, (/i,j/))	
+	  endif
+	endif
 enddo 
 close(handle) 
 endsubroutine ReadGraphFromText
@@ -194,7 +246,7 @@ subroutine SaveTxtGraph(handle,g)
 !! @note The 1st column is the point ID, and the following columns are the connecting points' ID.
 !!
 implicit none 
-integer,CONTIGUOUS , intent(in)           :: g(:,:)  !! Graph connectivity table. 
+integer , intent(in)           :: g(:,:)  !! Graph connectivity table. 
 integer, intent(in), optional :: handle		         !! Unit number of the input text file
 character(len=1024)           :: str                 !! String for FORMAT writing
 integer 			          :: i                   !! Looping variable 
@@ -217,7 +269,7 @@ subroutine SaveTxt2col(handle,g)
 !! @note The 1st and 2nd columns are point IDs. Each connection is represented by 1 line.
 !!
 implicit none 
-integer,CONTIGUOUS , intent(in)              :: g(:,:)  !! Graph connectivity table. 
+integer , intent(in)              :: g(:,:)  !! Graph connectivity table. 
 integer, intent(in), optional    :: handle              !! Unit number of the input text file
 integer                          :: i,j                 !! Looping variable
 do i=1,size(g,2)
@@ -241,9 +293,9 @@ function dist(g,E) result(D)
 !! Distance means the nomber of steps needed to arrive at this point starting from the edge
 !! 
 implicit none
-integer,CONTIGUOUS , intent(in):: g(:,:)                !! Graph connectivity table. 
-integer,CONTIGUOUS , intent(in):: E(:)                  !! Edge points' IDs
-integer	:: D(size(g,2))                                 !! Distance table
+integer , intent(in):: g(:,:)                !! Graph connectivity table. 
+integer , intent(in):: E(:)                  !! Edge points' IDs
+integer	:: D(1:size(g,2))                                 !! Distance table
 integer :: ST(0:size(g,2)*2)                            !! Circular Stack for BFS algorithm
 integer :: LST                                          !! Length of the Stack
 integer :: SLP                                          !! Lower Stack Pointer
@@ -278,9 +330,9 @@ function part(DL,DR) result(P)
 !! obtained from [[edge]]
 !!
 implicit none
-integer,CONTIGUOUS ,intent(in)	:: DL(:) !! Distance to the left edge obtained from [[edge]]
-integer,CONTIGUOUS ,intent(in)	:: DR(:) !! Distance to the right edge obtained from [[edge]]
-integer 						:: P(size(DL))	     !! Partition, 1 for left part, and 2 for right part
+integer ,intent(in)	:: DL(:) !! Distance to the left edge obtained from [[edge]]
+integer ,intent(in)	:: DR(:) !! Distance to the right edge obtained from [[edge]]
+integer 			:: P(1:size(DL))	     !! Partition, 1 for left part, and 2 for right part
 P = 2
 where(DL < DR) P=1
 end function part
@@ -290,10 +342,10 @@ function PtsInParts(P,PID) result(PT)
 !! Function returns a list of points' IDs in a partition obtained from [[part]] 
 !!
 implicit none
-integer,CONTIGUOUS ,intent(in)	:: P(:)					!! Partition from [[part]] 
-integer,intent(in)        		:: PID   				!! Part Number 
-integer 				        :: PT(COUNT(P==PID))	!! List of Points in the part #PID
-integer 						:: i,j
+integer ,intent(in)	:: P(:)					!! Partition from [[part]] 
+integer,intent(in)        	:: PID   				!! Part Number 
+integer 			:: PT(COUNT(P==PID))	!! List of Points in the part #PID
+integer 			:: i,j
 j = 1
 do i = 1,size(P)
 	if (P(i) == PID) then 
@@ -309,20 +361,20 @@ function edge(g,P) result(E)
 !! The partition is obtained from function [[part]]
 !!
 implicit none
-integer,CONTIGUOUS , intent(in)	:: g(:,:)				  !! Graph connectivity table. 
-integer,CONTIGUOUS , intent(in)	:: P(:)	    			  !! Partition Information from [[part]] 
-integer 					:: E(size(P)+2,maxval(P))     !! Edge of each part
-integer 					:: i,j   				   	  !! Loop integers
+integer , intent(in)	:: g(:,:)	!! Graph connectivity table. 
+integer , intent(in)	:: P(:)	    	!! Partition Information from [[part]] 
+integer 					:: E(size(P),maxval(P))     !! Edge of each part
+integer 					:: i,j   		      !! Loop integers
 E = 0
 E(1,:) = 1
-do i = 1,size(g,2)							! Loop over all the points
-	do j = 2,g(1,i)							! Look up its cunnecting points
-		if (P(g(j,i)) .ne. P(i)) then   	! They belong to different parts
-			E(1,P(i)) = E(1,P(i)) + 1
-			E(E(1,P(i)),P(i)) = i 			! Add this point into the Edge list of part-i
-			exit
-		endif 
-	enddo
+do i = 1,size(g,2)			! Loop over all the points
+  do j = 2,g(1,i)			! Look up its connecting points
+    if (P(g(j,i)) .ne. P(i)) then   	! They belong to different parts      
+      E(1,P(i)) = E(1,P(i)) + 1
+      E(E(1,P(i)),P(i)) = i 		! Add this point into the Edge list of part-i
+      exit
+    endif 
+  enddo
 enddo
 end function edge
 
@@ -335,8 +387,8 @@ function subgraph(g,PT) result(sg)
 !! in the sub-graph corresponds the point `PT(1)` in original graph.
 !!
 implicit none 
-integer,CONTIGUOUS , intent(in) :: g(:,:)	            !! Graph connectivity table. 
-integer,CONTIGUOUS , intent(in) :: PT(:)	            !! List of points in the sub-graph
+integer , intent(in) :: g(:,:)	            !! Graph connectivity table. 
+integer , intent(in) :: PT(:)	            !! List of points in the sub-graph
 integer 			      :: sg(size(g,1)+1,size(PT))	!! Sub-Graph connectivity table
 integer 			      :: i,j,k 					    !! Looping integers
 sg = 0
@@ -357,12 +409,15 @@ pure function index(A,y) result(x)
 !! Function returns the index of one value y in a list A
 !!
 implicit none
-integer, intent(in)			:: A(:), y
-integer 					:: x,i			
-do i=1,size(A)			
-	if (y == A(i)) exit 
-enddo 
-x = i
+integer, intent(in)	:: A(:), y
+integer 		:: x,i		
+  x = -1	
+  do i=1,size(A)			
+  	if (y == A(i)) then 
+  	  x = i
+  	  exit 
+  	endif
+  enddo 
 end function index
 
 
@@ -371,7 +426,7 @@ function indexes(A,y) result(x)
 !! Function returns the index of an array of values y in the list A by calling [[index]]
 !!
 implicit none
-integer,CONTIGUOUS , intent(in)	:: A(:), y(:)
+integer , intent(in)	:: A(:), y(:)
 integer 					:: x(size(y)),i			
 FORALL (i=1:size(y)) x(i) = index(A,y(i))
 end function indexes
@@ -382,7 +437,7 @@ function resize(A) result(B)
 !! Function returns a more compact table list by resizing the array
 !!
 implicit none
-integer,CONTIGUOUS , intent(in)	:: A(:,:)	   !! Table with too many 0, to be compressed 
+integer , intent(in)	:: A(:,:)	   !! Table with too many 0, to be compressed 
 integer 					:: B(maxval(A(1,:)),size(A,2))	!! Output resized table
 B(:,:) = A(1:size(B,1),:)
 end function resize
@@ -395,11 +450,11 @@ subroutine slice_1contact(g,E,S)
 !!
 !! @note S(1,:) indicates the end of the slice, so S(1,:)-1 is the number of points in a slice
 implicit none
-integer,CONTIGUOUS , intent(in)	:: g(:,:)		!! Graph connectivity table. 
-integer,CONTIGUOUS , intent(in) :: E(:) 		!! Left Edge points' IDs
+integer , intent(in)	:: g(:,:)		!! Graph connectivity table. 
+integer , intent(in) :: E(:) 		!! Left Edge points' IDs
 integer, allocatable,intent(out):: S(:,:)       !! Output the Slices, 2nd index is the Slice number 
 integer   						:: D(size(g,2))	!! Distance table of the points
-integer   						:: i, NP
+integer   						:: i, NP  
   D = dist(g,E) +1
   ! Add 1 in order to have distance=1 for the edge points
   NP = -1
@@ -433,18 +488,18 @@ recursive subroutine slice_2contacts(g,E1,E2,NMAX,S)
 !! @note S(1,:) indicates the end of the slice, so S(1,:)-1 is the number of points in a slice.
 !!
 implicit none
-integer,CONTIGUOUS , intent(in) :: g(:,:)		                      !! Graph connectivity table. 
-integer,CONTIGUOUS , intent(in) :: E1(:) 		                      !! Left Edge points' IDs
-integer,CONTIGUOUS , intent(in) :: E2(:) 		                      !! RightEdge points' IDs
+integer , intent(in) :: g(:,:)		                      !! Graph connectivity table. 
+integer , intent(in) :: E1(:) 		                      !! Left Edge points' IDs
+integer , intent(in) :: E2(:) 		                      !! RightEdge points' IDs
 integer, intent(in)				:: NMAX			                      !! Maximum number of points in a single slice
 integer, allocatable,intent(out):: S(:,:)                             !! Output the Slices, 2nd index is the Slice number 
-integer   						:: P(size(g,2))	                      !! Partition table 
-integer   						:: E(size(g,2),2)                     !! Edge table 
+integer   						:: P(1:size(g,2))	                      !! Partition table 
+integer   						:: E(1:size(g,2),2)                     !! Edge table 
 integer   						:: NP(2)		                      !! Number of points in parts
 integer, allocatable			:: S1(:,:)		                      !! Slices in the left part  
 integer, allocatable			:: S2(:,:)		                      !! Slices in the right part
 integer, allocatable			:: PT(:)		                      !! Point list in a part
-integer                         :: i, err
+integer                         :: i, err  
   do i= 1,size(E1)
   	if (ANY(E2(:) == E1(i))) then       		
   	! If the 2 edges contact, than we need to put the whole part into one slice
@@ -456,6 +511,7 @@ integer                         :: i, err
   enddo
   ! Split the Graph into 2 parts
   P = part(dist(g,E1),dist(g,E2))
+  write(101,*)P
   FORALL (i=1:2) NP(i) = count(P==i)
   ! Determinate the edges
   E = edge(g,P)
@@ -514,9 +570,9 @@ function testSlicing(g,S) result(b)
 !! looking at the neighbors of all the points in each slice. 
 !!
 implicit none
-integer,CONTIGUOUS , intent(in)	:: g(:,:)				!! Graph connectivity table. 
+integer , intent(in)	:: g(:,:)				!! Graph connectivity table. 
 integer							:: b 					!! Test result
-integer,CONTIGUOUS , intent(in)	:: S(:,:)               !! Slices, 2nd index is the Slice number 
+integer , intent(in)	:: S(:,:)               !! Slices, 2nd index is the Slice number 
 integer 						:: L(size(g,2))			!! Slice number of points
 integer 						:: i, k,j,err			
   L = -1
@@ -545,7 +601,7 @@ function SliceNum(S) result(N)
 !! Function returns an array of indexes of slice to which the points belong 
 !!
 implicit none
-integer,CONTIGUOUS , intent(in)	:: S(:,:)                !! Slices, 2nd index is the Slice number 
+integer , intent(in)	:: S(:,:)                !! Slices, 2nd index is the Slice number 
 integer 						:: N(1:maxval(S(2:,:)))	 !! Slice number of points
 integer 						:: i,j
   do i=1,size(S, 2)							! Loop over the slices

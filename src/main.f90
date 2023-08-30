@@ -34,22 +34,49 @@ integer, allocatable   :: g(:,:)        !! Graph connectivity table
 integer, allocatable   :: S(:,:)        !! Slices information
 integer, allocatable   :: E1(:),E2(:)      !! Edge information
 integer :: NMAX
+integer :: i
 
-call ReadGraphFromText('graph_dat',g)
+call ReadGraphFromText('graph_dat',g,threshold=1e-5,use0index=.true.)
+
+open(unit=11,file='graph.dat')
+call SaveTxtGraph(11,g)
+close(11)
 
 call ReadEdgeFromText('edge1_dat',E1)
-
+print *,'Number of points in left contact',size(E1)
 call ReadEdgeFromText('edge2_dat',E2)
+!print *,'Number of points in right contact',size(E2)
 
-NMAX = 20
-call slice(g,E1,E2,NMAX,S)
+NMAX = 50
+call slice(g,E1,S) ! 1 contact slicing
 
-open(unit=11,file='slice.dat')
+i = testSlicing(g,S)
+
+if ( i .ne. 0 ) then
+   print *,'problem', i
+endif
+
+open(unit=11,file='slice_1contact.dat')
 
 call SaveSlicesTxt(11,S)
 
 close(11)
 
-deallocate(g,S)
+
+call slice(g,E1,E2,NMAX,S) ! 2 contact slicing
+
+i = testSlicing(g,S)
+
+if ( i .ne. 0 ) then
+   print *,'problem', i
+endif
+
+open(unit=11,file='slice_2contacts.dat')
+
+call SaveSlicesTxt(11,S)
+
+close(11)
+
+deallocate(g,S,E1,E2)
 
 END PROGRAM MAIN
