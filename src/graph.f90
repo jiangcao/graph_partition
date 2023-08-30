@@ -122,24 +122,28 @@ end subroutine AddEdge
 
 
 
-subroutine ReadEdgeFromText(fname,E)
+subroutine ReadEdgeFromText(fname,E,use0index)
 !! Subroutine for reading the edge data from an ASCII text file. 
 implicit none
 integer, allocatable, intent(out)   :: E(:)        !! Edge index
 character(len=*), intent(in)        :: fname       !! input text file name
+logical, intent(in), optional       :: use0index
 integer::NPT,i
 integer, parameter :: handle = 677
 logical :: l0index
-l0index = .true.
+  l0index = .false.
+  if (present(use0index)) l0index=use0index
   open(unit = handle, file=fname)
   read(handle,*) NPT ! number of points
   allocate(E(NPT))  
-  do i=1,NPT
-	read(handle,*) E(i)
-	if (l0index) then
-	  E(i) = E(i)+1
-	endif
-  enddo
+  read(handle,*) E(:)
+  if (l0index) E(:)=E(:)+1
+  !do i=1,NPT
+!	read(handle,*) E(i)
+!	if (l0index) then
+!	  E(i) = E(i)+1
+!	endif
+  !enddo
   close(handle)
 end subroutine ReadEdgeFromText
 
@@ -183,7 +187,7 @@ do
 	if (max(i,j)>M) M=max(i,j)
 	NL = NL+1
 enddo
-print *, 'Number of Points=',M
+print '("Number of Points = ",i18)', M
 allocate(gn(M))
 gn = 0
 ! Read again the file to know about the size of the Graph Table
@@ -209,7 +213,7 @@ do k =1,NL
 	endif
 enddo
 NC = maxval(gn)
-print *, 'Max Number of Connections=',NC
+print '("Max Number of Connections = ",i18)', NC
 allocate(g(NC+1,M))
 g(:,:) = 0
 g(1,:) = 1
@@ -510,8 +514,7 @@ integer                         :: i, err
   	endif 
   enddo
   ! Split the Graph into 2 parts
-  P = part(dist(g,E1),dist(g,E2))
-  write(101,*)P
+  P = part(dist(g,E1),dist(g,E2))  
   FORALL (i=1:2) NP(i) = count(P==i)
   ! Determinate the edges
   E = edge(g,P)
@@ -584,9 +587,9 @@ integer 						:: i, k,j,err
   do i=1,size(S,2)							! Loop over the slices
   	do j=2,S(1,i)							! Loop over the points in one slice
   		do k=2,g(1,S(j,i))					! Loop over all its neighbor points
-  			if (ABS(L(g(k,S(j,i))) - i) .gt. 1) then 
+  			if ( abs(L(g(k,S(j,i))) - i) > 1 ) then 
   				b = i 		        		! It connects to a points too far
-  !				print *,L(g(k,S(j,i))),g(k,S(j,i)), i,S(j,i)
+  				print '(4I18)',L(g(k,S(j,i))),g(k,S(j,i)), i,S(j,i)
   				return 
   			endif 
   		enddo 
