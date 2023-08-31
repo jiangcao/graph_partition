@@ -84,6 +84,8 @@ real(dp) , intent(in), optional :: X(:)
 real(dp) , intent(in), optional :: Y(:)
 real(dp) , intent(in), optional :: Z(:)
 integer :: i,j
+write(handle,*)'# number of points in each slice'
+write(handle,'(8I10)') S(1,:) -1 ! number of points in each slice
 if (present(X) .and. present(Y) .and. present(Z)) then
   write (handle,*) '#     X         Y         Z       Slice# '
   do i = 1,size(S,2)
@@ -203,7 +205,7 @@ do k =1,NL
 	  j=j+1
 	endif
 	if (present(threshold)) then
-	  if (weight > threshold) then
+	  if (abs(weight) > threshold) then
 	    gn(i) = gn(i) +1
 	    gn(j) = gn(j) +1
 	  endif
@@ -232,7 +234,7 @@ do k=1,NL
 	endif		
 	if (i .ne. j) then
 	  if (present(threshold)) then
-	    if (weight > threshold) then
+	    if (abs(weight) > threshold) then
 	      call AddEdge(g, (/i,j/))	
 	    endif
 	  else

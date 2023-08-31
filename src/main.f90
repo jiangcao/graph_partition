@@ -42,6 +42,7 @@ real :: start, finish
 
 print *,'threshold = '
 read(*,*) threshold
+print *,threshold
 
 call cpu_time(start)
     
@@ -53,8 +54,15 @@ close(11)
 
 call ReadEdgeFromText('edge1_dat',E1,use0index=.false.)
 print '("Number of points in left contact ",i18)',size(E1)
+print *, E1
 call ReadEdgeFromText('edge2_dat',E2,use0index=.false.)
 print '("Number of points in right contact ",i18)',size(E2)
+print *,E2
+
+!allocate(E1(g(1,1)-1))
+!E1=g(2:g(1,1),1)
+!allocate(E2(g(1,size(g,2))-1))
+!E2=g(2:g(1,size(g,2)),size(g,2))
 
 call cpu_time(finish)
 print '("Reading File Time = ",f0.3," seconds.")',finish-start
